@@ -212,6 +212,11 @@ def main(mode, save_path, num_batches, data_path=None):
         (activations,) = VariableFilter(
             application=r.generator.transition.apply,
             name="states")(cg.variables)
+
+        # THEANO BUG: monitoring of this variable breaks on the
+        weights, = VariableFilter(bricks=[r.generator], name="weights")(cg)
+        weight_sum = named_copy(weights.sum(), "weight_sum")
+
         mean_activation = named_copy(abs(activations).mean(),
                                      "mean_activation")
 
@@ -224,7 +229,8 @@ def main(mode, save_path, num_batches, data_path=None):
         observables = [
             cost, min_energy, max_energy, mean_activation,
             batch_size, max_length, cost_per_character,
-            algorithm.total_step_norm, algorithm.total_gradient_norm]
+            algorithm.total_step_norm, algorithm.total_gradient_norm,
+            weight_sum]
         for name, param in params.items():
             observables.append(named_copy(
                 param.norm(2), name + "_norm"))
@@ -244,10 +250,6 @@ def main(mode, save_path, num_batches, data_path=None):
                 average_monitoring,
                 FinishAfter(after_n_batches=num_batches)
                 .add_condition("after_batch", _is_nan),
-                Plot(os.path.basename(save_path),
-                     [[average_monitoring.record_name(cost)],
-                      [average_monitoring.record_name(cost_per_character)]],
-                     every_n_batches=10),
                 SerializeMainLoop(save_path, every_n_batches=500,
                                   save_separately=["model", "log"]),
                 Printing(every_n_batches=1)])
