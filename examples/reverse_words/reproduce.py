@@ -3,13 +3,9 @@
 from __future__ import print_function
 import logging
 import pprint
-import math
 import numpy
-import os
-import operator
 
 import theano
-from six.moves import input
 from theano import tensor
 
 from blocks.bricks import Tanh, Initializable
@@ -22,24 +18,11 @@ from blocks.bricks.sequence_generators import (
     SequenceGenerator, LinearReadout, SoftmaxEmitter, LookupFeedback)
 from blocks.config_parser import config
 from blocks.graph import ComputationGraph
-from fuel.transformers import Mapping, Batch, Padding, Filter
-from fuel.datasets import OneBillionWord, TextFile
-from fuel.schemes import ConstantScheme
-from blocks.dump import load_parameter_values
-from blocks.algorithms import (GradientDescent, Scale,
-                               StepClipping, CompositeRule)
 from blocks.initialization import Orthogonal, IsotropicGaussian, Constant
 from blocks.model import Model
 from blocks.monitoring import aggregation
-from blocks.extensions import FinishAfter, Printing, Timing
-from blocks.extensions.saveload import SerializeMainLoop
-from blocks.extensions.monitoring import TrainingDataMonitoring
-from blocks.extensions.plot import Plot
-from blocks.main_loop import MainLoop
 from blocks.filter import VariableFilter
 from blocks.utils import named_copy, dict_union
-
-from blocks.search import BeamSearch
 
 config.recursion_limit = 100000
 floatX = theano.config.floatX
@@ -52,38 +35,6 @@ all_chars = ([chr(ord('a') + i) for i in range(26)] +
              [' ', '<S>', '</S>'])
 code2char = dict(enumerate(all_chars))
 char2code = {v: k for k, v in code2char.items()}
-
-
-def reverse_words(sample):
-    sentence = sample[0]
-    result = []
-    word_start = -1
-    for i, code in enumerate(sentence):
-        if code >= char2code[' ']:
-            if word_start >= 0:
-                result.extend(sentence[i - 1:word_start - 1:-1])
-                word_start = -1
-            result.append(code)
-        else:
-            if word_start == -1:
-                word_start = i
-    return (result,)
-
-
-def _lower(s):
-    return s.lower()
-
-
-def _transpose(data):
-    return tuple(array.T for array in data)
-
-
-def _filter_long(data):
-    return len(data[0]) <= 100
-
-
-def _is_nan(log):
-    return math.isnan(log.current_row.total_gradient_norm)
 
 
 class WordReverser(Initializable):
@@ -186,4 +137,3 @@ data = {chars: numpy.ones((3, 4), dtype='int64'),
         targets: numpy.ones((5, 4), dtype='int64'),
         targets_mask: numpy.ones((5, 4)).astype(floatX)}
 print("Must be 20: ", weight_sum.eval(data))
-
