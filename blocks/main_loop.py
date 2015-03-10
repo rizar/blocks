@@ -72,9 +72,9 @@ class MainLoop(object):
         The training algorithm.
     data_stream : instance of :class:`.DataStream`.
         The data stream.
-    model : :class:`.AbstractModel` instance, optional
+    model : :class:`~blocks.Model` instance, optional
         The model object. It is entirely transparent for the main loop
-        but may be used by extensions.
+        and used only by extensions.
     log : instance of :class:`.TrainingLog`, optional
         The log. When not given, a :class:`.TrainingLog` is created.
     extensions : list of :class:`.TrainingExtension` instances
