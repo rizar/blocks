@@ -17,7 +17,15 @@ logger = logging.getLogger()
 
 
 class BrickComputationGraph(ComputationGraph):
+    """Computation graph annotated with bricks.
 
+    Attributes
+    ----------
+    top_bricks : list of :class:`~blocks.bricks.base.Brick`
+        The top bricks from the computation graph, that is those
+        that are not children of other bricks.
+
+    """
     def __init__(self, outputs):
         super(BrickComputationGraph, self).__init__(outputs)
         self._get_bricks()
@@ -37,7 +45,63 @@ class BrickComputationGraph(ComputationGraph):
 
 
 class Model(object):
+    """Gives extensions access to parameters, bricks, etc.
 
+    Model is used in the :class:`~blocks.main_loop.MainLoop` as a
+    middleware between extensions and the objects the user built to define
+    what and how should be trained. This includes a computation graph, a
+    set of parameters, often also a set of bricks and an objective
+    variable. In the common case all these things can be extracted from the
+    computation graph, but :class:`Model` provides a way to override those
+    when necessary.
+
+    Unlike other frameworks you _do not have to_ inherit from
+    :class:`Model` to train something new. The :class:`Model` should cover
+    needs of most people. You might find it helpful to define a
+    :class:`Model` subclass as this way the logic you equip it with will be
+    accessible for the extensions and after loading the model from a
+    pickled file.
+
+    Parameters
+    ----------
+    outputs : list of :class:`~theano.Variable`, optional
+        The output variables of the computation graph. If given, a
+        :class:`BrickComputationGraph` with these outputs is treated
+        as the model's computation graph. Can be given only if
+        `computation_graph` is not given.
+    computation_graph : instance of :class:`.ComputationGraph`
+        The computation graph. Can not be given when `outputs` are not
+        given.
+    objective : :class:`~theano.Variable`, optional
+        The objective varible. If not given, the objective is extracted
+        from the computation graph, see :meth:`get_objective`.
+    parameters : list of shared Theano variables, optional
+        The parameters. If not given, the parameters are extracted
+        from the computation graph, see :meth:`get_parameters`.
+    top_bricks : list of :class:`~blocks.bricks.base.Brick`
+        The top bricks of the model. If not given, the bricks are extracted
+        from the computation graph, see :meth:`get_top_bricks`.
+
+    Examples
+    --------
+    >>> import theano
+    >>> from theano import tensor
+    >>> from blocks.bricks import Tanh, Softmax, MLP
+    >>> from blocks.bricks.cost import CategoricalCrossEntropy
+    >>> mlp = MLP(activations=[Tanh(), Softmax()], dims=[784, 100, 10])
+    >>> x = tensor.matrix('features')
+    >>> y = tensor.lmatrix('targets')
+    >>> y_hat = mlp.apply(x)
+    >>> cost = CategoricalCrossEntropy().apply(y.flatten(), y_hat)
+    >>> model = Model(cost)
+    >>> [brick.name for brick in model.get_top_bricks()]
+    ['mlp', 'categoricalcrossentropy']
+    >>> model.get_parameters()
+    [b, b, W, W]
+    >>> model.get_objective()
+    categoricalcrossentropy_apply_cost
+
+    """
     def __init__(self, outputs=None,
                  computation_graph=None, objective=None,
                  parameters=None, top_bricks=None):
