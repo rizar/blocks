@@ -16,11 +16,11 @@ def test_model():
     h1 = mlp1.apply(x)
     h2 = mlp2.apply(h1)
 
-    model = Model(h2.sum())
+    model = Model([h2.sum()])
     assert model.get_top_bricks() == [mlp1, mlp2]
     # The order of parameters returned is deterministic but
     # not sensible.
-    assert list(model.get_params().items()) == [
+    assert list(model.get_parameters(hierarchical_names=True).items()) == [
         ('/mlp2/linear_0.b', mlp2.linear_transformations[0].b),
         ('/mlp1/linear_1.b', mlp1.linear_transformations[1].b),
         ('/mlp1/linear_0.b', mlp1.linear_transformations[0].b),
@@ -31,7 +31,7 @@ def test_model():
     # Test getting and setting parameter values
     mlp3 = MLP([Tanh()], [10, 10])
     mlp3.allocate()
-    model3 = Model(mlp3.apply(x))
+    model3 = Model([mlp3.apply(x)])
     param_values = {
         '/mlp/linear_0.W': 2 * numpy.ones((10, 10), dtype=floatX),
         '/mlp/linear_0.b': 3 * numpy.ones(10, dtype=floatX)}
@@ -47,5 +47,5 @@ def test_model():
     mlp4 = MLP([Tanh()], [10, 10])
 
     def helper():
-        Model(mlp4.apply(mlp3.apply(x)))
+        Model([mlp4.apply(mlp3.apply(x))])
     assert_raises(ValueError, helper)
