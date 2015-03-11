@@ -64,7 +64,7 @@ class Model(object):
 
     Parameters
     ----------
-    outputs : list of :class:`~theano.Variable`, optional
+    outputs : (list of) :class:`~theano.Variable`, optional
         The output variables of the computation graph. If given, a
         :class:`BrickComputationGraph` with these outputs is treated
         as the model's computation graph. Can be given only if
