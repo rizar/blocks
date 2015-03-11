@@ -67,6 +67,7 @@ Quickstart
    >>> from fuel.schemes import SequentialScheme
    >>> from blocks.extensions import FinishAfter, Printing
    >>> from blocks.extensions.monitoring import DataStreamMonitoring
+   >>> from blocks.model import Model
    >>> from blocks.main_loop import MainLoop
 
 Construct your model.
@@ -97,7 +98,7 @@ Load your training data using Fuel.
 And train!
 
 >>> main_loop = MainLoop(
-...     model=mlp, data_stream=train_stream,
+...     model=Model(cost), data_stream=train_stream,
 ...     algorithm=GradientDescent(
 ...         cost=cost, params=ComputationGraph(cost).parameters,
 ...         step_rule=Scale(learning_rate=0.1)),
