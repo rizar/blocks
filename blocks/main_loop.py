@@ -72,7 +72,7 @@ class MainLoop(object):
         The training algorithm.
     data_stream : instance of :class:`.DataStream`.
         The data stream.
-    model : :class:`~blocks.Model` instance, optional
+    model : :class:`~blocks.Model` instance
         The model object. It is entirely transparent for the main loop
         and used only by extensions.
     log : instance of :class:`.TrainingLog`, optional
@@ -82,8 +82,8 @@ class MainLoop(object):
         here.
 
     """
-    def __init__(self, algorithm, data_stream,
-                 model=None, log=None, extensions=None):
+    def __init__(self, algorithm, data_stream, model,
+                 log=None, extensions=None):
         if not log:
             log = TrainingLog()
         if not extensions:
