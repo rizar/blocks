@@ -2,6 +2,7 @@ from blocks.graph import ComputationGraph
 from blocks.filter import get_brick
 from picklable_itertools import chain
 
+
 class BrickComputationGraph(ComputationGraph):
     """Computation graph annotated with bricks.
 
@@ -28,5 +29,3 @@ class BrickComputationGraph(ComputationGraph):
                 self.top_bricks.append(brick)
         if len(set(b.name for b in self.top_bricks)) < len(self.top_bricks):
             raise ValueError("top bricks with the same name")
-
-
