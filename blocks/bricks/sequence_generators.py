@@ -76,15 +76,15 @@ class BaseSequenceGenerator(Initializable):
        readout, initial states and glimpses given by the `initial_state`
        method of the transition.
 
-    2. The next states are computed from the current states, current
-       glimpses, feedback from the current outputs. This happens in in the
-       transition's `apply` method. The `fork` brick is used to
-       compute the transition's inputs from the feedback.
-
-    3. Given the contexts, the next states and the current glimpses
+    2. Given the contexts, the current states and glimpses
        the attention mechanism hidden in the transition
        produces the next glimpses. This happens in the `take_glimpses`
        method of the transition.
+
+    3. The next states are computed from the current states, next
+       glimpses, feedback from the current outputs. This happens in in the
+       transition's `apply` method. The `fork` brick is used to
+       compute the transition's inputs from the feedback.
 
     4. Using the contexts, the feedback from the current outputs, the
        next states and glimpses, the readout brick is used to generate
@@ -263,19 +263,19 @@ class BaseSequenceGenerator(Initializable):
         contexts = dict_subset(kwargs, self._context_names)
         glimpses = dict_subset(kwargs, self._glimpse_names)
 
+        next_glimpses = self.transition.take_glimpses(
+            as_dict=True, **dict_union(states, glimpses, contexts))
         feedback = self.readout.feedback(outputs)
         inputs = self.fork.apply(feedback, as_dict=True)
         next_states = self.transition.compute_states(
-            as_list=True,
-            **dict_union(inputs, states, glimpses, contexts))
-        next_glimpses = self.transition.take_glimpses(
-            as_dict=True, **dict_union(next_states, glimpses, contexts))
+            as_dict=True,
+            **dict_union(inputs, states, next_glimpses, contexts))
         next_readouts = self.readout.readout(
             feedback=feedback,
             **dict_union(next_states, next_glimpses, contexts))
         next_outputs = self.readout.emit(next_readouts)
         next_costs = self.readout.cost(next_readouts, next_outputs)
-        return (next_states + [next_outputs] +
+        return (list(next_states.values())+ [next_outputs] +
                 list(next_glimpses.values()) + [next_costs])
 
     @generate.delegate
