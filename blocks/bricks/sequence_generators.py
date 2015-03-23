@@ -8,8 +8,8 @@ element is fed back into the recurrent network state. Sometimes
 also an attention mechanism is used to condition sequence generation
 on some structured input like another sequence or an image.
 
-This module provides :class:`SequenceGenerator` that builds a sequence generating
-network from three main components:
+This module provides :class:`SequenceGenerator` that builds a sequence
+generating network from three main components:
 
 * a core recurrent transition, e.g. :class:`~blocks.bricks.recurrent.LSTM`
   or :class:`~blocks.bricks.recurrent.GRU`
@@ -275,7 +275,7 @@ class BaseSequenceGenerator(Initializable):
             **dict_union(next_states, next_glimpses, contexts))
         next_outputs = self.readout.emit(next_readouts)
         next_costs = self.readout.cost(next_readouts, next_outputs)
-        return (list(next_states.values())+ [next_outputs] +
+        return (list(next_states.values()) + [next_outputs] +
                 list(next_glimpses.values()) + [next_costs])
 
     @generate.delegate

@@ -104,35 +104,27 @@ class BeamSearch(object):
         self.initial_state_computer = function(
             self.contexts, initial_states, on_unused_input='ignore')
 
-    def _compile_next_state_computer(self):
+    def _compile_states_and_logprobs_computer(self):
         next_states = [VariableFilter(bricks=[self.generator],
                                       name='^' + name + '$',
                                       roles=[OUTPUT])(self.inner_cg)[-1]
-                       for name in self.state_names]
-        next_outputs = VariableFilter(
-            application=self.generator.readout.emit, roles=[OUTPUT])(
-                self.inner_cg.variables)
-        self.next_state_computer = function(
-            self.contexts + self.input_states + next_outputs, next_states)
-
-    def _compile_logprobs_computer(self):
+                       for name in self.state_names
+                       if name != 'outputs']
         # This filtering should return identical variables
         # (in terms of computations) variables, and we do not care
         # which to use.
         probs = VariableFilter(
             application=self.generator.readout.emitter.probs,
             roles=[OUTPUT])(self.inner_cg)[0]
-        logprobs = -tensor.log(probs)
-        self.logprobs_computer = function(
-            self.contexts + self.input_states, logprobs,
-            on_unused_input='ignore')
+        costs = -tensor.log(probs)
+        self.next_state_computer = function(
+            self.contexts + self.input_states, [costs] + next_states)
 
     def compile(self):
         """Compile all Theano functions used."""
         self._compile_context_computer()
         self._compile_initial_state_computer()
-        self._compile_next_state_computer()
-        self._compile_logprobs_computer()
+        self._compile_states_and_logprobs_computer()
         self.compiled = True
 
     def compute_contexts(self, inputs):
@@ -170,27 +162,7 @@ class BeamSearch(object):
         init_states = self.initial_state_computer(*list(contexts.values()))
         return OrderedDict(equizip(self.state_names, init_states))
 
-    def compute_logprobs(self, contexts, states):
-        """Compute log probabilities of all possible outputs.
-
-        Parameters
-        ----------
-        contexts : dict
-            A {name: :class:`numpy.ndarray`} dictionary of contexts.
-        states : dict
-            A {name: :class:`numpy.ndarray`} dictionary of states.
-
-        Returns
-        -------
-        A :class:`numpy.ndarray` of the (beam size, number of possible
-        outputs) shape.
-
-        """
-        input_states = [states[name] for name in self.input_state_names]
-        return self.logprobs_computer(*(list(contexts.values()) +
-                                      input_states))
-
-    def compute_next_states(self, contexts, states, outputs):
+    def compute_states_and_logprobs(self, contexts, states):
         """Computes next states.
 
         Parameters
@@ -199,8 +171,6 @@ class BeamSearch(object):
             A {name: :class:`numpy.ndarray`} dictionary of contexts.
         states : dict
             A {name: :class:`numpy.ndarray`} dictionary of states.
-        outputs : :class:`numpy.ndarray`
-            A :class:`numpy.ndarray` of this step outputs.
 
         Returns
         -------
@@ -209,8 +179,11 @@ class BeamSearch(object):
         """
         input_states = [states[name] for name in self.input_state_names]
         next_values = self.next_state_computer(*(list(contexts.values()) +
-                                                 input_states + [outputs]))
-        return OrderedDict(equizip(self.state_names, next_values))
+                                                 input_states))
+        return (next_values[0],
+                OrderedDict(equizip(
+                    [name for name in self.state_names if name != 'outputs'],
+                    next_values[1:])))
 
     @staticmethod
     def _smallest(matrix, k, only_first_row=False):
@@ -294,9 +267,12 @@ class BeamSearch(object):
             if all_masks[-1].sum() == 0:
                 break
 
+            logprobs, next_states = self.compute_states_and_logprobs(
+                contexts, states)
+            states.update(next_states)
+
             # We carefully hack values of the `logprobs` array to ensure
             # that all finished sequences are continued with `eos_symbol`.
-            logprobs = self.compute_logprobs(contexts, states)
             next_costs = (all_costs[-1, :, None] +
                           logprobs * all_masks[-1, :, None])
             (finished,) = numpy.where(all_masks[-1] == 0)
@@ -316,7 +292,7 @@ class BeamSearch(object):
             all_costs = all_costs[:, indexes]
 
             # Record chosen output and compute new states
-            states.update(self.compute_next_states(contexts, states, outputs))
+            states['outputs'] = outputs
             all_outputs = numpy.vstack([all_outputs, outputs[None, :]])
             all_costs = numpy.vstack([all_costs, chosen_costs[None, :]])
             mask = outputs != eol_symbol
