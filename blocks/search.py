@@ -62,11 +62,11 @@ class BeamSearch(object):
         self.generator = get_brick(samples)
         if not isinstance(self.generator, SequenceGenerator):
             raise ValueError
-        self.generate_call = get_application_call(samples)
-        if (not self.generate_call.application ==
+        generate_call = get_application_call(samples)
+        if (not generate_call.application ==
                 self.generator.generate):
             raise ValueError
-        self.inner_cg = ComputationGraph(self.generate_call.inner_outputs)
+        self.inner_cg = ComputationGraph(generate_call.inner_outputs)
 
         # Fetching names from the sequence generator
         self.context_names = self.generator.generate.contexts
@@ -77,9 +77,9 @@ class BeamSearch(object):
             VariableFilter(bricks=[self.generator], name='^' + name + '$',
                            roles=[INPUT])(self.inner_cg)[0]
             for name in self.context_names]
+
+        # Includes only those input state variables that were actually used
         self.input_states = []
-        # Includes only those state names that were actually used
-        # in 'generate'
         self.input_state_names = []
         for name in self.generator.generate.states:
             var = VariableFilter(
@@ -89,13 +89,16 @@ class BeamSearch(object):
                 self.input_state_names.append(name)
                 self.input_states.append(var[0])
 
+        self.state_names_no_output = [name for name in self.state_names
+                                      if name != 'outputs']
+
         self.compiled = False
 
     def _compile_context_computer(self):
         self.context_computer = function(
             self.inputs, self.contexts, on_unused_input='ignore')
 
-    def _compile_initial_state_computer(self):
+    def _compile_initial_states_computer(self):
         initial_states = [
             self.generator.initial_state(
                 name, self.beam_size,
@@ -108,22 +111,20 @@ class BeamSearch(object):
         next_states = [VariableFilter(bricks=[self.generator],
                                       name='^' + name + '$',
                                       roles=[OUTPUT])(self.inner_cg)[-1]
-                       for name in self.state_names
-                       if name != 'outputs']
+                       for name in self.state_names_no_output]
         # This filtering should return identical variables
         # (in terms of computations) variables, and we do not care
         # which to use.
-        probs = VariableFilter(
+        logprobs = -tensor.log(VariableFilter(
             application=self.generator.readout.emitter.probs,
-            roles=[OUTPUT])(self.inner_cg)[0]
-        costs = -tensor.log(probs)
+            roles=[OUTPUT])(self.inner_cg)[0])
         self.next_state_computer = function(
-            self.contexts + self.input_states, [costs] + next_states)
+            self.contexts + self.input_states, [logprobs] + next_states)
 
     def compile(self):
         """Compile all Theano functions used."""
         self._compile_context_computer()
-        self._compile_initial_state_computer()
+        self._compile_initial_states_computer()
         self._compile_states_and_logprobs_computer()
         self.compiled = True
 
@@ -174,16 +175,18 @@ class BeamSearch(object):
 
         Returns
         -------
-        A {name: numpy.array} dictionary of next states.
+        logprobs : :class:`numpy.ndarray` of negative log-likelihoods
+            for all possible outputs.
+        next_states : {name: :class:`numpy.ndarray`} dictionary of next
+            states.
 
         """
         input_states = [states[name] for name in self.input_state_names]
         next_values = self.next_state_computer(*(list(contexts.values()) +
                                                  input_states))
         return (next_values[0],
-                OrderedDict(equizip(
-                    [name for name in self.state_names if name != 'outputs'],
-                    next_values[1:])))
+                OrderedDict(equizip(self.state_names_no_output,
+                                    next_values[1:])))
 
     @staticmethod
     def _smallest(matrix, k, only_first_row=False):
@@ -291,7 +294,7 @@ class BeamSearch(object):
             all_masks = all_masks[:, indexes]
             all_costs = all_costs[:, indexes]
 
-            # Record chosen output and compute new states
+            # Record chosen outputs and compute new states
             states['outputs'] = outputs
             all_outputs = numpy.vstack([all_outputs, outputs[None, :]])
             all_costs = numpy.vstack([all_costs, chosen_costs[None, :]])
