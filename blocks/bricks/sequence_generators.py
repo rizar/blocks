@@ -98,7 +98,7 @@ class BaseSequenceGenerator(Initializable):
       average of the annotations.
 
     * For speech recognition we would have two: the weighted average,
-      the alignment and the alignment.
+      and the alignment.
 
     Parameters
     ----------
