@@ -122,3 +122,16 @@ def test_snapshot():
     cg = ComputationGraph(y)
     snapshot = cg.get_snapshot(dict(x=numpy.zeros((1, 10), dtype=floatX)))
     assert len(snapshot) == 14
+
+
+def test_remove_input_output_variables():
+    from theano.printing import debugprint
+    from blocks.graph import remove_input_output_variables
+    x = tensor.matrix('x')
+    linear = MLP([Identity(), Identity()], [10, 10, 10],
+                 weights_init=Constant(1), biases_init=Constant(2))
+    linear.initialize()
+    y = linear.apply(x)
+    debugprint(y)
+    y2, = remove_input_output_variables(ComputationGraph(y)).outputs
+    debugprint(y2)

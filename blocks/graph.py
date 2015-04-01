@@ -528,3 +528,15 @@ def apply_dropout(computation_graph, variables, drop_prob, rng=None,
         replacement.tag.replacement_of = variable
 
     return computation_graph.replace(replacements)
+
+
+def remove_input_output_variables(cg):
+    from blocks.roles import INPUT, OUTPUT, has_roles
+    copy_cg = cg.replace({})
+    for var in copy_cg:
+        if var.owner:
+            for i, input_var in enumerate(var.owner.inputs):
+                if has_roles(input_var, [INPUT, OUTPUT]):
+                    original, = input_var.owner.inputs
+                    var.owner.inputs[i] = original
+    return ComputationGraph(copy_cg.outputs)
