@@ -666,13 +666,12 @@ class FastGatedRecurrent(BaseRecurrent, Initializable):
         self.weights_init.initialize(self.state_to_state, self.rng)
         self.weights_init.initialize(self.state_to_gates, self.rng)
 
-    @recurrent(sequences=['inputs', 'update_inputs', 'reset_inputs', 'mask'],
+    @recurrent(sequences=['inputs', 'gate_inputs', 'mask'],
                states=['states'], outputs=['states'], contexts=[])
-    def apply(self, inputs, update_inputs, reset_inputs,
-              states=None, mask=None):
+    def do_apply(self, inputs, gate_inputs,
+                 states=None, mask=None):
         gate_values = self.gate_activation.apply(
-            states.dot(self.state_to_gates) +
-            tensor.concatenate([update_inputs, reset_inputs], 1))
+            states.dot(self.state_to_gates) + gate_inputs)
         update_values = gate_values[:, :self.dim]
         reset_values = gate_values[:, self.dim:]
 
@@ -687,3 +686,13 @@ class FastGatedRecurrent(BaseRecurrent, Initializable):
                            (1 - mask[:, None]) * states)
 
         return next_states
+
+    @application
+    def apply(self, inputs, update_inputs, reset_inputs, *args, **kwargs):
+        last_axis = update_inputs.ndim - 1
+        gate_inputs = tensor.concatenate([update_inputs, reset_inputs], last_axis)
+        return self.do_apply(inputs, gate_inputs, *args, **kwargs)
+
+    @apply.delegate
+    def apply_delegate(self):
+        return self.do_apply
