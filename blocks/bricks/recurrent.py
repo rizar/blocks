@@ -687,7 +687,7 @@ class FastGatedRecurrent(BaseRecurrent, Initializable):
 
         return next_states
 
-    @application
+    @application(sequences=['inputs', 'reset_inputs', 'update_inputs', 'mask'])
     def apply(self, inputs, update_inputs, reset_inputs, *args, **kwargs):
         last_axis = update_inputs.ndim - 1
         gate_inputs = tensor.concatenate([update_inputs, reset_inputs], last_axis)
