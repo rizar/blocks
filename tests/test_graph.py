@@ -127,11 +127,16 @@ def test_snapshot():
 def test_remove_input_output_variables():
     from theano.printing import debugprint
     from blocks.graph import remove_input_output_variables
+    from blocks.bricks.recurrent import SimpleRecurrent
+    from blocks.bricks import Tanh
     x = tensor.matrix('x')
+    rec = SimpleRecurrent(10, Tanh())
+    x = rec.apply(x)
     linear = MLP([Identity(), Identity()], [10, 10, 10],
                  weights_init=Constant(1), biases_init=Constant(2))
     linear.initialize()
     y = linear.apply(x)
     debugprint(y)
-    y2, = remove_input_output_variables(ComputationGraph(y)).outputs
-    debugprint(y2)
+    cg = ComputationGraph(y).replace({})
+    remove_input_output_variables(cg)
+    debugprint(cg.outputs)

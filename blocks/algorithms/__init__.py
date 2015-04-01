@@ -221,6 +221,14 @@ class GradientDescent(DifferentiableCostMinimizer):
         for param in self.params:
             all_updates.append((param, param - self.steps[param]))
         all_updates += self.step_rule_updates
+
+        cg = ComputationGraph([rhs for lhs, rhs in all_updates])
+        print("BEFORE", len(list(cg.variables)) + len(list(cg.scan_variables)))
+        from blocks.graph import remove_input_output_variables
+        remove_input_output_variables(cg)
+        cg2 = ComputationGraph([rhs for lhs, rhs in all_updates])
+        print("AFTER", len(list(cg2.variables)) + len(list(cg2.scan_variables)))
+
         self._function = theano.function(self.inputs, [], updates=all_updates)
         logger.info("The training algorithm is initialized")
 
