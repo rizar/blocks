@@ -329,3 +329,47 @@ def test_super_in_recurrent_overrider():
     inputs = tensor.tensor3('inputs')
     context = tensor.matrix('context').dimshuffle('x', 0, 1)
     brick.apply(context, inputs=inputs)
+
+
+def test_fast_gru():
+    import numpy
+    from blocks.bricks.recurrent import FastGatedRecurrent
+
+    rng = numpy.random.RandomState(123)
+
+    # For values
+    def rand(size):
+        return rng.uniform(size=size).astype(floatX)
+
+    # For masks
+    def generate_mask(length, batch_size):
+        mask = numpy.ones((length, batch_size), dtype=floatX)
+        # To make it look like read data
+        for i in range(batch_size):
+            mask[1 + rng.randint(0, length - 1):, i] = 0.0
+        return mask
+
+    dim = 10
+
+    x = tensor.tensor3('x')
+    y = tensor.tensor3('y')
+    z = tensor.tensor3('z')
+    m = tensor.matrix('m')
+
+    gru = GatedRecurrent(dim, weights_init=IsotropicGaussian(0.1))
+    gru.initialize()
+
+    fgru = FastGatedRecurrent(dim)
+    fgru.allocate()
+    fgru.state_to_state.set_value(gru.state_to_state.get_value())
+    fgru.state_to_gates.set_value(
+        numpy.hstack([gru.state_to_update.get_value(),
+                      gru.state_to_reset.get_value()]))
+
+    s = gru.apply(x, y, z, mask=m)
+    sf = fgru.apply(x, y, z, mask=m)
+
+    func = theano.function([x, y, z, m], [s, sf])
+    s_val, sf_val = func(
+        rand((3, 5, 10)), rand((3, 5, 10)), rand((3, 5, 10)), generate_mask(3, 5))
+    assert_allclose(s_val, sf_val)

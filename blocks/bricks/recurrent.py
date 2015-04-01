@@ -623,3 +623,67 @@ class Bidirectional(Initializable):
                                            *args, **kwargs)]
         return [tensor.concatenate([f, b], axis=2)
                 for f, b in equizip(forward, backward)]
+
+
+class FastGatedRecurrent(BaseRecurrent, Initializable):
+    @lazy(allocation=['dim'])
+    def __init__(self, dim, activation=None, gate_activation=None,
+                 **kwargs):
+        super(FastGatedRecurrent, self).__init__(**kwargs)
+        self.dim = dim
+
+        if not activation:
+            activation = Tanh()
+        if not gate_activation:
+            gate_activation = Sigmoid()
+        self.activation = activation
+        self.gate_activation = gate_activation
+
+        self.children = [activation, gate_activation]
+
+    @property
+    def state_to_state(self):
+        return self.params[0]
+
+    @property
+    def state_to_gates(self):
+        return self.params[1]
+
+    def get_dim(self, name):
+        if name == 'mask':
+            return 0
+        if name in self.apply.sequences + self.apply.states:
+            return self.dim
+        return super(GatedRecurrent, self).get_dim(name)
+
+    def _allocate(self):
+        self.params.append(shared_floatx_nans(
+            (self.dim, self.dim), name='state_to_state'))
+        self.params.append(shared_floatx_nans(
+            (self.dim, 2 * self.dim), name='state_to_gates'))
+
+    def _initialize(self):
+        self.weights_init.initialize(self.state_to_state, self.rng)
+        self.weights_init.initialize(self.state_to_gates, self.rng)
+
+    @recurrent(sequences=['inputs', 'update_inputs', 'reset_inputs', 'mask'],
+               states=['states'], outputs=['states'], contexts=[])
+    def apply(self, inputs, update_inputs, reset_inputs,
+              states=None, mask=None):
+        gate_values = self.gate_activation.apply(
+            states.dot(self.state_to_gates) +
+            tensor.concatenate([update_inputs, reset_inputs], 1))
+        update_values = gate_values[:, :self.dim]
+        reset_values = gate_values[:, self.dim:]
+
+        states_reset = states * reset_values
+        next_states = self.activation.apply(
+            states_reset.dot(self.state_to_state) + inputs)
+        next_states = (next_states * update_values +
+                        states * (1 - update_values))
+
+        if mask:
+            next_states = (mask[:, None] * next_states +
+                           (1 - mask[:, None]) * states)
+
+        return next_states
