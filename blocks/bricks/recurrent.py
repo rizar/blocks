@@ -479,52 +479,44 @@ class GatedRecurrent(BaseRecurrent, Initializable):
         return self.params[0]
 
     @property
-    def state_to_update(self):
+    def state_to_gates(self):
         return self.params[1]
-
-    @property
-    def state_to_reset(self):
-        return self.params[2]
 
     def get_dim(self, name):
         if name == 'mask':
             return 0
-        if name in self.apply.sequences + self.apply.states:
+        if name in ['inputs', 'states']:
             return self.dim
+        if name == 'gate_inputs':
+            return 2 * self.dim
         return super(GatedRecurrent, self).get_dim(name)
 
     def _allocate(self):
-        def new_param(name):
-            return shared_floatx_nans((self.dim, self.dim), name=name)
-
-        self.params.append(new_param('state_to_state'))
-        self.params.append(new_param('state_to_update'))
-        self.params.append(new_param('state_to_reset'))
+        self.params.append(shared_floatx_nans((self.dim, self.dim),
+                           name='state_to_state'))
+        self.params.append(shared_floatx_nans((self.dim, 2 * self.dim),
+                           name='state_to_gates'))
 
     def _initialize(self):
         self.weights_init.initialize(self.state_to_state, self.rng)
-        self.weights_init.initialize(self.state_to_update, self.rng)
-        self.weights_init.initialize(self.state_to_reset, self.rng)
+        self.weights_init.initialize(self.state_to_gates, self.rng)
 
-    @recurrent(sequences=['mask', 'inputs', 'update_inputs', 'reset_inputs'],
+    @recurrent(sequences=['mask', 'inputs', 'gate_inputs'],
                states=['states'], outputs=['states'], contexts=[])
-    def apply(self, inputs, update_inputs, reset_inputs, states, mask=None):
+    def apply(self, inputs, gate_inputs, states, mask=None):
         """Apply the gated recurrent transition.
 
         Parameters
         ----------
         states : :class:`~tensor.TensorVariable`
             The 2 dimensional matrix of current states in the shape
-            (batch_size, features). Required for `one_step` usage.
+            (batch_size, dim). Required for `one_step` usage.
         inputs : :class:`~tensor.TensorVariable`
             The 2 dimensional matrix of inputs in the shape (batch_size,
-            features)
-        update_inputs : :class:`~tensor.TensorVariable`
-            The 2 dimensional matrix of inputs to the update gates in the
-            shape (batch_size, features).
-        reset_inputs : :class:`~tensor.TensorVariable`
-            The 2 dimensional matrix of inputs to the reset gates in the
-            shape (batch_size, features).
+            dim)
+        gate_inputs : :class:`~tensor.TensorVariable`
+            The 2 dimensional matrix of inputs to the gates in the
+            shape (batch_size, 2 * dim).
         mask : :class:`~tensor.TensorVariable`
             A 1D binary array in the shape (batch,) which is 1 if there is
             data available, 0 if not. Assumed to be 1-s only if not given.
@@ -535,15 +527,15 @@ class GatedRecurrent(BaseRecurrent, Initializable):
             Next states of the network.
 
         """
-        reset_values = self.gate_activation.apply(
-            states.dot(self.state_to_reset) + reset_inputs)
+        gate_values = self.gate_activation.apply(
+            states.dot(self.state_to_gates) + gate_inputs)
+        update_values = gate_values[:, :self.dim]
+        reset_values = gate_values[:, self.dim:]
         states_reset = states * reset_values
         next_states = self.activation.apply(
             states_reset.dot(self.state_to_state) + inputs)
-        update_values = self.gate_activation.apply(
-            states.dot(self.state_to_update) + update_inputs)
         next_states = (next_states * update_values +
-                        states * (1 - update_values))
+                       states * (1 - update_values))
         if mask:
             next_states = (mask[:, None] * next_states +
                            (1 - mask[:, None]) * states)
