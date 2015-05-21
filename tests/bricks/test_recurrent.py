@@ -200,7 +200,7 @@ class TestGatedRecurrent(unittest.TestCase):
         self.gated.initialize()
         self.reset_only = GatedRecurrent(
             dim=3, activation=Tanh(),
-            gate_activation=Tanh(), use_update_gate=False,
+            gate_activation=Tanh(),
             weights_init=IsotropicGaussian(), seed=1)
         self.reset_only.initialize()
 
@@ -230,29 +230,35 @@ class TestGatedRecurrent(unittest.TestCase):
     def test_reset_only_many_steps(self):
         x = tensor.tensor3('x')
         ri = tensor.tensor3('ri')
+        zi = tensor.tensor3('zi')
         mask = tensor.matrix('mask')
-        h = self.reset_only.apply(x, reset_inputs=ri, mask=mask)
-        calc_h = theano.function(inputs=[x, ri, mask], outputs=[h])
+        h = self.reset_only.apply(x,
+            reset_inputs=ri, update_inputs=zi, mask=mask)
+        calc_h = theano.function(inputs=[x, ri, zi, mask], outputs=[h])
 
         x_val = 0.1 * numpy.asarray(list(itertools.permutations(range(4))),
                                     dtype=floatX)
         x_val = numpy.ones((24, 4, 3), dtype=floatX) * x_val[..., None]
         ri_val = 0.3 - x_val
+        zi_val = 2 * ri_val
         mask_val = numpy.ones((24, 4), dtype=floatX)
         mask_val[12:24, 3] = 0
         h_val = numpy.zeros((25, 4, 3), dtype=floatX)
         W = self.reset_only.state_to_state.get_value()
         U = self.reset_only.state_to_reset.get_value()
+        V = self.reset_only.state_to_update.get_value()
 
         for i in range(1, 25):
             r_val = numpy.tanh(h_val[i - 1].dot(U) + ri_val[i - 1])
+            z_val = numpy.tanh(h_val[i - 1].dot(V) + zi_val[i - 1])
             h_val[i] = numpy.tanh((r_val * h_val[i - 1]).dot(W) +
                                   x_val[i - 1])
+            h_val[i] = z_val * h_val[i] + (1 - z_val) * h_val[i - 1]
             h_val[i] = (mask_val[i - 1, :, None] * h_val[i] +
                         (1 - mask_val[i - 1, :, None]) * h_val[i - 1])
         h_val = h_val[1:]
         # TODO Figure out why this tolerance needs to be so big
-        assert_allclose(h_val, calc_h(x_val, ri_val,  mask_val)[0], 1e-03)
+        assert_allclose(h_val, calc_h(x_val, ri_val, zi_val, mask_val)[0], 1e-05)
 
 
 class TestBidirectional(unittest.TestCase):

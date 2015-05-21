@@ -448,10 +448,6 @@ class GatedRecurrent(BaseRecurrent, Initializable):
     gate_activation : :class:`.Brick` or None
         The brick to apply as activation for gates. If ``None`` a
         :class:`.Sigmoid` brick is used.
-    use_upgate_gate : bool
-        If True the update gates are used.
-    use_reset_gate : bool
-        If True the reset gates are used.
 
     Notes
     -----
@@ -465,11 +461,9 @@ class GatedRecurrent(BaseRecurrent, Initializable):
     """
     @lazy(allocation=['dim'])
     def __init__(self, dim, activation=None, gate_activation=None,
-                 use_update_gate=True, use_reset_gate=True, **kwargs):
+                 **kwargs):
         super(GatedRecurrent, self).__init__(**kwargs)
         self.dim = dim
-        self.use_update_gate = use_update_gate
-        self.use_reset_gate = use_reset_gate
 
         if not activation:
             activation = Tanh()
@@ -504,21 +498,17 @@ class GatedRecurrent(BaseRecurrent, Initializable):
             return shared_floatx_nans((self.dim, self.dim), name=name)
 
         self.params.append(new_param('state_to_state'))
-        self.params.append(new_param('state_to_update')
-                           if self.use_update_gate else None)
-        self.params.append(new_param('state_to_reset')
-                           if self.use_reset_gate else None)
+        self.params.append(new_param('state_to_update'))
+        self.params.append(new_param('state_to_reset'))
 
     def _initialize(self):
         self.weights_init.initialize(self.state_to_state, self.rng)
-        if self.use_update_gate:
-            self.weights_init.initialize(self.state_to_update, self.rng)
-        if self.use_reset_gate:
-            self.weights_init.initialize(self.state_to_reset, self.rng)
+        self.weights_init.initialize(self.state_to_update, self.rng)
+        self.weights_init.initialize(self.state_to_reset, self.rng)
 
-    @recurrent(states=['states'], outputs=['states'], contexts=[])
-    def apply(self, inputs, update_inputs=None, reset_inputs=None,
-              states=None, mask=None):
+    @recurrent(sequences=['mask', 'inputs', 'update_inputs', 'reset_inputs'],
+               states=['states'], outputs=['states'], contexts=[])
+    def apply(self, inputs, update_inputs, reset_inputs, states, mask=None):
         """Apply the gated recurrent transition.
 
         Parameters
@@ -531,12 +521,10 @@ class GatedRecurrent(BaseRecurrent, Initializable):
             features)
         update_inputs : :class:`~tensor.TensorVariable`
             The 2 dimensional matrix of inputs to the update gates in the
-            shape (batch_size, features). None when the update gates are
-            not used.
+            shape (batch_size, features).
         reset_inputs : :class:`~tensor.TensorVariable`
             The 2 dimensional matrix of inputs to the reset gates in the
-            shape (batch_size, features). None when the reset gates are not
-            used.
+            shape (batch_size, features).
         mask : :class:`~tensor.TensorVariable`
             A 1D binary array in the shape (batch,) which is 1 if there is
             data available, 0 if not. Assumed to be 1-s only if not given.
@@ -547,42 +535,19 @@ class GatedRecurrent(BaseRecurrent, Initializable):
             Next states of the network.
 
         """
-        if (self.use_update_gate != (update_inputs is not None)) or \
-                (self.use_reset_gate != (reset_inputs is not None)):
-            raise ValueError("Configuration and input mismatch: You should "
-                             "provide inputs for gates if and only if the "
-                             "gates are on.")
-
-        states_reset = states
-
-        if self.use_reset_gate:
-            reset_values = self.gate_activation.apply(
-                states.dot(self.state_to_reset) + reset_inputs)
-            states_reset = states * reset_values
-
+        reset_values = self.gate_activation.apply(
+            states.dot(self.state_to_reset) + reset_inputs)
+        states_reset = states * reset_values
         next_states = self.activation.apply(
             states_reset.dot(self.state_to_state) + inputs)
-
-        if self.use_update_gate:
-            update_values = self.gate_activation.apply(
-                states.dot(self.state_to_update) + update_inputs)
-            next_states = (next_states * update_values +
-                           states * (1 - update_values))
-
+        update_values = self.gate_activation.apply(
+            states.dot(self.state_to_update) + update_inputs)
+        next_states = (next_states * update_values +
+                        states * (1 - update_values))
         if mask:
             next_states = (mask[:, None] * next_states +
                            (1 - mask[:, None]) * states)
-
         return next_states
-
-    @apply.property('sequences')
-    def apply_inputs(self):
-        sequences = ['mask', 'inputs']
-        if self.use_update_gate:
-            sequences.append('update_inputs')
-        if self.use_reset_gate:
-            sequences.append('reset_inputs')
-        return sequences
 
 
 class Bidirectional(Initializable):
