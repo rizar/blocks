@@ -14,7 +14,7 @@ from blocks.initialization import NdarrayInitialization
 from blocks.roles import add_role, WEIGHT, INITIAL_STATE
 from blocks.utils import (pack, shared_floatx_nans, shared_floatx_zeros,
                           dict_union, dict_subset, is_shared_variable)
-from blocks.parallel import Fork
+from blocks.bricks.parallel import Fork
 
 logger = logging.getLogger()
 
@@ -629,14 +629,14 @@ class RecurrentWithFork(Initializable):
 
     @lazy(allocation=['input_dim'])
     def __init__(self, recurrent, input_dim, **kwargs):
+        super(RecurrentWithFork, self).__init__(**kwargs)
         self.recurrent = recurrent
         self.input_dim = input_dim
         self.fork = Fork(
             [name for name in self.recurrent.sequences
              if name != 'mask'],
-             name='fork0', prototype=Linear())
+             prototype=Linear())
         self.children = [recurrent.brick, self.fork]
-        super(RecurrentWithFork, self).__init__(**kwargs)
 
     def _push_allocation_config(self):
         self.fork.input_dim = self.input_dim
@@ -646,7 +646,7 @@ class RecurrentWithFork(Initializable):
     @application(inputs=['input_', 'mask'])
     def apply(self, input_, mask=None, **kwargs):
         return self.recurrent(
-            mask=mask, **dict_union(self.fork.apply(input_),
+            mask=mask, **dict_union(self.fork.apply(input_, as_dict=True),
                                     kwargs))
 
     @apply.property('outputs')
