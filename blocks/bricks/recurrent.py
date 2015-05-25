@@ -643,9 +643,11 @@ class RecurrentWithFork(Initializable):
         self.fork.output_dims = [self.recurrent.brick.get_dim(name)
                                  for name in self.fork.output_names]
 
-    @application(inputs=['input_'])
-    def apply(self, input_):
-        return self.recurrent(**self.fork.apply(input_))
+    @application(inputs=['input_', 'mask'])
+    def apply(self, input_, mask=None, **kwargs):
+        return self.recurrent(
+            mask=mask, **dict_union(self.fork.apply(input_),
+                                    kwargs))
 
     @apply.property('outputs')
     def apply_outputs(self):
