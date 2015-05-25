@@ -8,12 +8,13 @@ from picklable_itertools.extras import equizip
 import theano
 from theano import tensor, Variable
 
-from blocks.bricks import Initializable, Sigmoid, Tanh
+from blocks.bricks import Initializable, Sigmoid, Tanh, Linear
 from blocks.bricks.base import Application, application, Brick, lazy
 from blocks.initialization import NdarrayInitialization
 from blocks.roles import add_role, WEIGHT, INITIAL_STATE
 from blocks.utils import (pack, shared_floatx_nans, shared_floatx_zeros,
                           dict_union, dict_subset, is_shared_variable)
+from blocks.parallel import Fork
 
 logger = logging.getLogger()
 
@@ -622,3 +623,30 @@ class Bidirectional(Initializable):
     @apply.delegate
     def apply_delegate(self):
         return self.children[0].apply
+
+
+class RecurrentWithFork(Initializable):
+
+    @lazy(allocation=['input_dim'])
+    def __init__(self, recurrent, input_dim, **kwargs):
+        self.recurrent = recurrent
+        self.input_dim = input_dim
+        self.fork = Fork(
+            [name for name in self.recurrent.sequences
+             if name != 'mask'],
+             name='fork0', prototype=Linear())
+        self.children = [recurrent.brick, self.fork]
+        super(RecurrentWithFork, self).__init__(**kwargs)
+
+    def _push_allocation_config(self):
+        self.fork.input_dim = self.input_dim
+        self.fork.output_dims = [self.recurrent.brick.get_dim(name)
+                                 for name in self.fork.output_names]
+
+    @application(inputs=['input_'])
+    def apply(self, input_):
+        return self.recurrent(**self.fork.apply(input_))
+
+    @apply.property('outputs')
+    def apply_outputs(self):
+        return self.recurrent.states
