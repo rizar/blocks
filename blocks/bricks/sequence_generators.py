@@ -149,13 +149,18 @@ class BaseSequenceGenerator(Initializable):
 
     """
     @lazy()
-    def __init__(self, readout, transition, fork, **kwargs):
+    def __init__(self, readout, transition, fork, language_model=None,
+                 **kwargs):
         super(BaseSequenceGenerator, self).__init__(**kwargs)
         self.readout = readout
         self.transition = transition
         self.fork = fork
+        self.language_model = language_model
+
 
         self.children = [self.readout, self.fork, self.transition]
+        if self.language_model:
+            self.children.append(self.language_model)
 
     @property
     def _state_names(self):
@@ -258,6 +263,13 @@ class BaseSequenceGenerator(Initializable):
             mask=mask, return_initial_states=True, as_dict=True,
             **dict_union(inputs, states, contexts))
 
+        # Run the language model
+        if self.language_model:
+            lm_arguments = self.language_model.apply(
+                outputs, mask=mask, as_dict=True)
+        else:
+            lm_arguments = {}
+
         # Separate the deliverables. The last states are discarded: they
         # are not used to predict any output symbol. The initial glimpses
         # are discarded because they are not used for prediction.
@@ -272,7 +284,8 @@ class BaseSequenceGenerator(Initializable):
             feedback[0],
             self.readout.feedback(self.readout.initial_outputs(batch_size)))
         readouts = self.readout.readout(
-            feedback=feedback, **dict_union(states, glimpses, contexts))
+            feedback=feedback,
+            **dict_union(lm_arguments, states, glimpses, contexts))
         costs = self.readout.cost(readouts, outputs)
         if mask is not None:
             costs *= mask
@@ -301,9 +314,15 @@ class BaseSequenceGenerator(Initializable):
         # masks in context are optional (e.g. `attended_mask`)
         contexts = dict_subset(kwargs, self._context_names, must_have=False)
         glimpses = dict_subset(kwargs, self._glimpse_names)
+        lm_states = dict_subset(kwargs, self.language_model.apply.outputs)
 
+        lm_arguments = {}
+        if self.language_model:
+            lm_arguments = self.language_model.apply_step(
+                outputs, dict_union(lm_states, as_dict=False))
         next_glimpses = self.transition.take_glimpses(
-            as_dict=True, **dict_union(states, glimpses, contexts))
+            as_dict=True,
+            **dict_union(lm_arguments, states, glimpses, contexts))
         next_readouts = self.readout.readout(
             feedback=self.readout.feedback(outputs),
             **dict_union(states, next_glimpses, contexts))
