@@ -4,19 +4,19 @@ from numpy.testing import assert_allclose, assert_equal
 import theano
 from theano import tensor
 
-from blocks.bricks import Tanh, Identity, Feedforward, Initializable, application
-from blocks.bricks.lookup import LookupTable
+from blocks.bricks import Tanh, Identity
 from blocks.bricks.base import application
 from blocks.bricks.recurrent import SimpleRecurrent, GatedRecurrent
 from blocks.bricks.attention import SequenceContentAttention
 from blocks.bricks.sequence_generators import (
     SequenceGenerator, Readout, TrivialEmitter,
     SoftmaxEmitter, LookupFeedback)
+from blocks.bricks.lookup import LookupTable
 from blocks.filter import VariableFilter
 from blocks.graph import ComputationGraph
 from blocks.initialization import Orthogonal, IsotropicGaussian, Constant
+from blocks.bricks.language_models import LanguageModel
 from blocks.roles import AUXILIARY
-from blocks.utils import dict_union
 
 
 class TestEmitter(TrivialEmitter):
@@ -284,58 +284,6 @@ def test_softmax_emitter_initial_outputs():
                  3 * numpy.ones((2,), dtype='int64'))
 
 
-class LookAndRec(Feedforward, Initializable):
-    """The traditional recurrent transition.
-
-    The most well-known recurrent transition: a matrix multiplication,
-    optionally followed by a non-linearity.
-
-    Parameters
-    ----------
-    dim : int
-        The dimension of the hidden state
-    activation : :class:`.Brick`
-        The brick to apply as activation.
-
-    Notes
-    -----
-    See :class:`.Initializable` for initialization parameters.
-
-    """
-    def __init__(self, readout_dim, dim, **kwargs):
-        super(LookAndRec, self).__init__(**kwargs)
-        self.lookup = LookupTable(readout_dim, dim)
-        self.rec = SimpleRecurrent(dim=dim, activation=Tanh())
-        self.dim = dim
-        self.children = [self.lookup, self.rec]
-
-    def get_dim(self, name):
-        if name == 'mask':
-            return 0
-        if name == 'lm_output':
-            return self.dim
-        if name == 'inputs':
-            return self.dim
-        return super(LookAndRec, self).get_dim(name)
-
-    @application(inputs=['inputs', 'mask'], outputs=['lm_output'])
-    def apply(self, inputs=None, mask=None):
-        lookuped = self.lookup.apply(inputs)
-        return self.rec.apply(lookuped, mask=mask)
-
-    @application(inputs=['inputs', 'mask', 'lm_output'], outputs=['lm_output'])
-    def apply_step(self, inputs=None, mask=None, lm_output=None):
-        lookuped = self.lookup.apply(inputs)
-        return self.rec.apply(lookuped, states=lm_output, mask=mask,
-                              iterate=False)
-
-    @application
-    def initial_state(self, name, batch_size, *args, **kwargs):
-        if name == 'lm_output':
-            return self.rec.initial_state('states', batch_size, *args,
-                                          **kwargs)
-
-
 def test_sequence_generator_with_lm():
     floatX = theano.config.floatX
     rng = numpy.random.RandomState(1234)
@@ -348,8 +296,9 @@ def test_sequence_generator_with_lm():
 
     transition = GatedRecurrent(dim=dim, activation=Tanh(),
                                 weights_init=Orthogonal())
-    language_model = LookAndRec(readout_dim, dim,
-                                weights_init=IsotropicGaussian(0.1))
+    lookup = LookupTable(readout_dim, dim)
+    language_model = LanguageModel(dim, preaggregator=lookup,
+                                   weights_init=IsotropicGaussian(0.1))
     generator = SequenceGenerator(
         Readout(readout_dim=readout_dim, source_names=["states"],
                 emitter=SoftmaxEmitter(theano_seed=1234),
