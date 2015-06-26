@@ -345,7 +345,7 @@ def test_sequence_generator_with_lm():
     # Test generate
     states, outputs, lm_outputs, costs = generator.generate(
         iterate=True, batch_size=batch_size, n_steps=n_steps)
-    cg = ComputationGraph(states + outputs + costs)
+    cg = ComputationGraph([states, outputs, costs])
     states_val, outputs_val, costs_val = theano.function(
         [], [states, outputs, costs],
         updates=cg.updates)()
