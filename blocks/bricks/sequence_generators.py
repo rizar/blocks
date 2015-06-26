@@ -174,6 +174,10 @@ class BaseSequenceGenerator(Initializable):
     def _glimpse_names(self):
         return self.transition.take_glimpses.outputs
 
+    @property
+    def _lm_state_names(self):
+        return self.language_model.apply_step.outputs
+
     def _push_allocation_config(self):
         # Configure readout. That involves `get_dim` requests
         # to the transition. To make sure that it answers
@@ -312,14 +316,13 @@ class BaseSequenceGenerator(Initializable):
         states = dict_subset(kwargs, self._state_names)
         contexts = dict_subset(kwargs, self._context_names)
         glimpses = dict_subset(kwargs, self._glimpse_names)
-        if self.language_model:
-            lm_states = dict_subset(
-                kwargs, self.language_model.apply_step.outputs)
-
         lm_arguments = {}
         if self.language_model:
+            lm_states = dict_subset(
+                kwargs, self._lm_state_names)
             lm_arguments = self.language_model.apply_step(
-                outputs, as_dict=True, **dict_union(lm_states))
+                outputs, as_dict=True, **lm_states)
+
         next_glimpses = self.transition.take_glimpses(
             as_dict=True,
             **dict_union(lm_arguments, states, glimpses, contexts))
@@ -344,18 +347,18 @@ class BaseSequenceGenerator(Initializable):
 
     @generate.property('states')
     def generate_states(self):
+        result = self._state_names + ['outputs'] + self._glimpse_names
         if self.language_model:
-            return (self._state_names + ['outputs'] + self._glimpse_names +
-                    self.language_model.apply_step.outputs)
-        return self._state_names + ['outputs'] + self._glimpse_names
+            result.extend(self._lm_state_names)
+        return result
 
     @generate.property('outputs')
     def generate_outputs(self):
+        result = self._state_names + ['outputs'] + self._glimpse_names
         if self.language_model:
-            return (self._state_names + ['outputs'] + self._glimpse_names +
-                    self.language_model.apply_step.outputs + ['costs'])
-        return (self._state_names + ['outputs'] +
-                self._glimpse_names + ['costs'])
+            result.extend(self._lm_state_names)
+        result.append('costs')
+        return result
 
     def get_dim(self, name):
         if name in (self._state_names + self._context_names +
@@ -363,7 +366,7 @@ class BaseSequenceGenerator(Initializable):
             return self.transition.get_dim(name)
         elif name == 'outputs':
             return self.readout.get_dim(name)
-        elif self.language_model and name in self.language_model.apply_step.outputs:
+        elif self.language_model and name in self._lm_state_names:
             return self.language_model.get_dim(name)
         return super(BaseSequenceGenerator, self).get_dim(name)
 
