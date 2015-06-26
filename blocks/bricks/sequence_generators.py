@@ -314,7 +314,9 @@ class BaseSequenceGenerator(Initializable):
         # masks in context are optional (e.g. `attended_mask`)
         contexts = dict_subset(kwargs, self._context_names, must_have=False)
         glimpses = dict_subset(kwargs, self._glimpse_names)
-        lm_states = dict_subset(kwargs, self.language_model.apply_step.outputs)
+        if self.language_model:
+            lm_states = dict_subset(
+                kwargs, self.language_model.apply_step.outputs)
 
         lm_arguments = {}
         if self.language_model:
