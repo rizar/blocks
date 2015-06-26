@@ -194,3 +194,4 @@ class Model(AbstractModel, ComputationGraph):
 
     def get_top_bricks(self):
         return self.top_bricks
+
