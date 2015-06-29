@@ -275,15 +275,15 @@ class BaseSequenceGenerator(Initializable):
 
         # Run the language model
         if self.language_model:
-            lm_arguments = self.language_model.evaluate(
+            lm_states = self.language_model.evaluate(
                 outputs=outputs, mask=mask, as_dict=True)
-            lm_arguments = dict_subset(lm_arguments, ['outputs'])
+            lm_states = dict_subset(lm_states, ['outputs'])
         else:
-            lm_arguments = {}
+            lm_states = {}
 
         readouts = self.readout.readout(
             feedback=feedback,
-            **dict_union(lm_arguments, states, glimpses, contexts))
+            **dict_union(lm_states, states, glimpses, contexts))
         costs = self.readout.cost(readouts, outputs)
         if mask is not None:
             costs *= mask
@@ -327,16 +327,16 @@ class BaseSequenceGenerator(Initializable):
         states = dict_subset(kwargs, self._state_names)
         contexts = dict_subset(kwargs, self._context_names)
         glimpses = dict_subset(kwargs, self._glimpse_names)
-        lm_arguments = {}
+        lm_states = {}
         if self.language_model:
             lm_states = dict_subset(
                 kwargs, self._lm_state_names)
-            lm_arguments = self.language_model.generate(
+            lm_states = self.language_model.generate(
                 outputs, as_dict=True, iterate=False, **lm_states)
 
         next_glimpses = self.transition.take_glimpses(
             as_dict=True,
-            **dict_union(lm_arguments, states, glimpses, contexts))
+            **dict_union(lm_states, states, glimpses, contexts))
         next_readouts = self.readout.readout(
             feedback=self.readout.feedback(outputs),
             **dict_union(states, next_glimpses, contexts))
@@ -349,7 +349,7 @@ class BaseSequenceGenerator(Initializable):
             as_list=True,
             **dict_union(next_inputs, states, next_glimpses, contexts))
         return (next_states + [next_outputs] +
-                list(next_glimpses.values()) + list(lm_arguments.values()) +
+                list(next_glimpses.values()) + list(lm_states.values()) +
                 [next_costs])
 
     @generate.delegate
