@@ -11,11 +11,9 @@ from blocks.bricks.attention import SequenceContentAttention
 from blocks.bricks.sequence_generators import (
     SequenceGenerator, Readout, TrivialEmitter,
     SoftmaxEmitter, LookupFeedback)
-from blocks.bricks.lookup import LookupTable
 from blocks.filter import VariableFilter
 from blocks.graph import ComputationGraph
 from blocks.initialization import Orthogonal, IsotropicGaussian, Constant
-from blocks.bricks.language_models import LanguageModel
 from blocks.roles import AUXILIARY
 
 
