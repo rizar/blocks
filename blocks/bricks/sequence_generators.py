@@ -185,10 +185,17 @@ class BaseSequenceGenerator(Initializable):
         self.transition.push_allocation_config()
         transition_sources = (self._state_names + self._context_names +
                               self._glimpse_names)
-        self.readout.source_dims = [self.transition.get_dim(name)
-                                    if name in transition_sources
-                                    else self.readout.get_dim(name)
-                                    for name in self.readout.source_names]
+        self.readout.source_dims = []
+        for name in self.readout.source_names:
+            if name in transition_sources:
+                self.readout.source_dims.append(self.transition.get_dim(name))
+            elif (self.language_model and name.startswith('lm_') and
+                          name[3:] in self._lm_state_names):
+                self.readout.source_dims.append(
+                    self.get_dim(name))
+            else:
+                self.readout.get_dim(name)
+
 
         # Configure fork. For similar reasons as outlined above,
         # first push `readout` configuration.
@@ -278,7 +285,8 @@ class BaseSequenceGenerator(Initializable):
         if self.language_model:
             lm_states = self.language_model.evaluate(
                 outputs=outputs, mask=mask, as_dict=True)
-            lm_states = dict_subset(lm_states, ['outputs'])
+            lm_states = {'lm_' + name: value for name, value
+                         in lm_states.items()}
         else:
             lm_states = {}
 
@@ -292,12 +300,11 @@ class BaseSequenceGenerator(Initializable):
         for name, variable in list(glimpses.items()) + list(states.items()):
             application_call.add_auxiliary_variable(
                 variable.copy(), name=name)
-        return ([costs] + states.values() + [outputs] + glimpses.values())
+        return [costs] + states.values() + glimpses.values()
 
     @evaluate.property('outputs')
     def evaluate_outputs(self):
-        return (['costs'] + self._state_names + ['outputs'] +
-                self._glimpse_names)
+        return ['costs'] + self._state_names + self._glimpse_names
 
     @application
     def cost_matrix(self, outputs, mask=None, **kwargs):
@@ -377,10 +384,11 @@ class BaseSequenceGenerator(Initializable):
         if name in (self._state_names + self._context_names +
                     self._glimpse_names):
             return self.transition.get_dim(name)
-        elif name == 'outputs':
+        if name == 'outputs':
             return self.readout.get_dim(name)
-        elif self.language_model and name in self._lm_state_names:
-            return self.language_model.get_dim(name)
+        if self.language_model:
+            if name.startswith('lm_') and name[3:] in self._lm_state_names:
+                return self.language_model.get_dim(name[3:])
         return super(BaseSequenceGenerator, self).get_dim(name)
 
     @application

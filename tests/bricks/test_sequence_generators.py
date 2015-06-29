@@ -302,7 +302,7 @@ def test_sequence_generator_with_lm():
         SimpleRecurrent(dim, Tanh()),
         name='language_model')
     generator = SequenceGenerator(
-        Readout(readout_dim=readout_dim, source_names=["states"],
+        Readout(readout_dim=readout_dim, source_names=["states", "lm_states"],
                 emitter=SoftmaxEmitter(theano_seed=1234),
                 feedback_brick=LookupFeedback(readout_dim,
                                               feedback_dim)),
