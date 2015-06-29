@@ -289,16 +289,20 @@ def test_sequence_generator_with_lm():
     rng = numpy.random.RandomState(1234)
 
     readout_dim = 5
-    feedback_dim = 3
+    feedback_dim = 4
     dim = 20
     batch_size = 30
     n_steps = 10
 
     transition = GatedRecurrent(dim=dim, activation=Tanh(),
                                 weights_init=Orthogonal())
-    lookup = LookupTable(readout_dim, dim)
-    language_model = LanguageModel(dim, preaggregator=lookup,
-                                   weights_init=IsotropicGaussian(0.1))
+    language_model = SequenceGenerator(
+        Readout(readout_dim=readout_dim, source_names=["states"],
+                emitter=SoftmaxEmitter(theano_seed=1234),
+                feedback_brick=LookupFeedback(readout_dim, dim,
+                                              name='feedback')),
+        SimpleRecurrent(dim, Tanh()),
+        name='language_model')
     generator = SequenceGenerator(
         Readout(readout_dim=readout_dim, source_names=["states"],
                 emitter=SoftmaxEmitter(theano_seed=1234),
@@ -312,9 +316,9 @@ def test_sequence_generator_with_lm():
 
     # Test 'cost_matrix' method
     y = tensor.lmatrix('y')
-    y.tag.test_value = numpy.zeros((15, 3), dtype='int64')
+    y.tag.test_value = numpy.zeros((15, batch_size), dtype='int64')
     mask = tensor.matrix('mask')
-    mask.tag.test_value = numpy.ones((15, 3))
+    mask.tag.test_value = numpy.ones((15, batch_size))
 
     costs = generator.cost_matrix(y, mask)
     assert costs.ndim == 2
@@ -362,5 +366,3 @@ def test_sequence_generator_with_lm():
     cost2 = costs_fun([[3, 1], [4, 2], [2, 0]],
                       [[1, 1], [1, 1], [1, 0]])[0]
     assert_allclose(cost1.sum(), cost2[:, 1].sum(), rtol=1e-5)
-
-test_sequence_generator_with_lm()

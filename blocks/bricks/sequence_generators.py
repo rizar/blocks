@@ -176,7 +176,7 @@ class BaseSequenceGenerator(Initializable):
 
     @property
     def _lm_state_names(self):
-        return self.language_model.apply_step.outputs
+        return self.language_model.generate.outputs
 
     def _push_allocation_config(self):
         # Configure readout. That involves `get_dim` requests
@@ -244,14 +244,7 @@ class BaseSequenceGenerator(Initializable):
         return cost
 
     @application
-    def cost_matrix(self, application_call, outputs, mask=None, **kwargs):
-        """Returns generation costs for output sequences.
-
-        See Also
-        --------
-        :meth:`cost` : Scalar cost.
-
-        """
+    def evaluate(self, application_call, outputs, mask=None, **kwargs):
         # We assume the data has axes (time, batch, features, ...)
         batch_size = outputs.shape[1]
 
@@ -267,13 +260,6 @@ class BaseSequenceGenerator(Initializable):
             mask=mask, return_initial_states=True, as_dict=True,
             **dict_union(inputs, states, contexts))
 
-        # Run the language model
-        if self.language_model:
-            lm_arguments = self.language_model.apply(
-                outputs, mask=mask, as_dict=True)
-        else:
-            lm_arguments = {}
-
         # Separate the deliverables. The last states are discarded: they
         # are not used to predict any output symbol. The initial glimpses
         # are discarded because they are not used for prediction.
@@ -287,6 +273,15 @@ class BaseSequenceGenerator(Initializable):
         feedback = tensor.set_subtensor(
             feedback[0],
             self.readout.feedback(self.readout.initial_outputs(batch_size)))
+
+        # Run the language model
+        if self.language_model:
+            lm_arguments = self.language_model.evaluate(
+                outputs=outputs, mask=mask, as_dict=True)
+            lm_arguments = dict_subset(lm_arguments, ['outputs'])
+        else:
+            lm_arguments = {}
+
         readouts = self.readout.readout(
             feedback=feedback,
             **dict_union(lm_arguments, states, glimpses, contexts))
@@ -297,7 +292,23 @@ class BaseSequenceGenerator(Initializable):
         for name, variable in list(glimpses.items()) + list(states.items()):
             application_call.add_auxiliary_variable(
                 variable.copy(), name=name)
-        return costs
+        return ([costs] + states.values() + [outputs] + glimpses.values())
+
+    @evaluate.property('outputs')
+    def evaluate_outputs(self):
+        return (['costs'] + self._state_names + ['outputs'] +
+                self._glimpse_names)
+
+    @application
+    def cost_matrix(self, outputs, mask=None, **kwargs):
+        """Returns generation costs for output sequences.
+
+        See Also
+        --------
+        :meth:`cost` : Scalar cost.
+
+        """
+        return self.evaluate(outputs, mask=mask)[0]
 
     @recurrent
     def generate(self, outputs, **kwargs):
@@ -322,8 +333,8 @@ class BaseSequenceGenerator(Initializable):
         if self.language_model:
             lm_states = dict_subset(
                 kwargs, self._lm_state_names)
-            lm_arguments = self.language_model.apply_step(
-                outputs, as_dict=True, **lm_states)
+            lm_arguments = self.language_model.generate(
+                outputs, as_dict=True, iterate=False, **lm_states)
 
         next_glimpses = self.transition.take_glimpses(
             as_dict=True,
