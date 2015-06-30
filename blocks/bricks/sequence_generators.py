@@ -30,6 +30,7 @@ pure recurrent network in :class:`FakeAttentionRecurrent`.
 """
 from abc import ABCMeta, abstractmethod
 
+from collections import OrderedDict
 from six import add_metaclass
 from theano import tensor
 
@@ -157,7 +158,6 @@ class BaseSequenceGenerator(Initializable):
         self.fork = fork
         self.language_model = language_model
 
-
         self.children = [self.readout, self.fork, self.transition]
         if self.language_model:
             self.children.append(self.language_model)
@@ -176,7 +176,7 @@ class BaseSequenceGenerator(Initializable):
 
     @property
     def _lm_state_names(self):
-        return self.language_model.generate.outputs
+        return ['lm_' + name for name in self.language_model._state_names]
 
     def _push_allocation_config(self):
         # Configure readout. That involves `get_dim` requests
@@ -190,7 +190,7 @@ class BaseSequenceGenerator(Initializable):
             if name in transition_sources:
                 self.readout.source_dims.append(self.transition.get_dim(name))
             elif (self.language_model and name.startswith('lm_') and
-                          name[3:] in self._lm_state_names):
+                          name in self._lm_state_names):
                 self.readout.source_dims.append(
                     self.get_dim(name))
             else:
@@ -338,17 +338,20 @@ class BaseSequenceGenerator(Initializable):
         glimpses = dict_subset(kwargs, self._glimpse_names)
         lm_states = {}
         if self.language_model:
-            lm_states = dict_subset(
-                kwargs, ["lm_" + name for name in self._lm_state_names])
-            lm_states = self.language_model.generate(
-                outputs, as_dict=True, iterate=False, **lm_states)
+            lm_states = OrderedDict([(name[3:], state) for name, state in dict_subset(
+                kwargs, self._lm_state_names).items()])
+            lm_states = OrderedDict([('lm_' + name, state) for name, state
+                         in self.language_model.generate(
+                            outputs, as_dict=True, iterate=False,
+                            **lm_states).items()
+                         if name != 'costs'])
 
         next_glimpses = self.transition.take_glimpses(
             as_dict=True,
             **dict_union(lm_states, states, glimpses, contexts))
         next_readouts = self.readout.readout(
             feedback=self.readout.feedback(outputs),
-            **dict_union(states, next_glimpses, contexts))
+            **dict_union(states, next_glimpses, contexts, lm_states))
         next_outputs = self.readout.emit(next_readouts)
         next_costs = self.readout.cost(next_readouts, next_outputs)
         next_feedback = self.readout.feedback(next_outputs)
@@ -369,14 +372,14 @@ class BaseSequenceGenerator(Initializable):
     def generate_states(self):
         result = self._state_names + ['outputs'] + self._glimpse_names
         if self.language_model:
-            result.extend(self._lm_state_names)
+            result.extend(self._lm_state_names + ['lm_outputs'])
         return result
 
     @generate.property('outputs')
     def generate_outputs(self):
         result = self._state_names + ['outputs'] + self._glimpse_names
         if self.language_model:
-            result.extend(self._lm_state_names)
+            result.extend(self._lm_state_names + ['lm_outputs'])
         result.append('costs')
         return result
 
@@ -387,7 +390,7 @@ class BaseSequenceGenerator(Initializable):
         if name == 'outputs':
             return self.readout.get_dim(name)
         if self.language_model:
-            if name.startswith('lm_') and name[3:] in self._lm_state_names:
+            if name.startswith('lm_') and name in self._lm_state_names + ['lm_outputs']:
                 return self.language_model.get_dim(name[3:])
         return super(BaseSequenceGenerator, self).get_dim(name)
 
@@ -397,10 +400,12 @@ class BaseSequenceGenerator(Initializable):
             self.transition.initial_states(
                 batch_size, as_dict=True, *args, **kwargs),
             outputs=self.readout.initial_outputs(batch_size))
-        if self.language_model :
+        if self.language_model:
             lm_initial_states = self.language_model.initial_states(
-                batch_size, *args, **kwargs)
-            state_dict = dict_union(state_dict, lm_initial_states)
+                batch_size, as_dict=True, *args, **kwargs)
+            state_dict = dict_union(state_dict,
+                                    {"lm_" + name: state for name, state
+                                     in lm_initial_states.items()})
         return [state_dict[state_name]
                 for state_name in self.generate.states]
 
