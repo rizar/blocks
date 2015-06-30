@@ -337,7 +337,7 @@ class BaseSequenceGenerator(Initializable):
         lm_states = {}
         if self.language_model:
             lm_states = dict_subset(
-                kwargs, self._lm_state_names)
+                kwargs, ["lm_" + name for name in self._lm_state_names])
             lm_states = self.language_model.generate(
                 outputs, as_dict=True, iterate=False, **lm_states)
 
