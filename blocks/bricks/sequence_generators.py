@@ -189,8 +189,7 @@ class BaseSequenceGenerator(Initializable):
         for name in self.readout.source_names:
             if name in transition_sources:
                 self.readout.source_dims.append(self.transition.get_dim(name))
-            elif (self.language_model and name.startswith('lm_') and
-                          name in self._lm_state_names):
+            elif self.language_model and name in self._lm_state_names:
                 self.readout.source_dims.append(
                     self.get_dim(name))
             else:
@@ -344,8 +343,7 @@ class BaseSequenceGenerator(Initializable):
                          in self.language_model.generate(
                             outputs, as_dict=True, iterate=False,
                             **lm_states).items()
-                         if name != 'costs'])
-
+                         if 'lm_' + name in self._lm_state_names])
         next_glimpses = self.transition.take_glimpses(
             as_dict=True,
             **dict_union(lm_states, states, glimpses, contexts))
@@ -372,14 +370,14 @@ class BaseSequenceGenerator(Initializable):
     def generate_states(self):
         result = self._state_names + ['outputs'] + self._glimpse_names
         if self.language_model:
-            result.extend(self._lm_state_names + ['lm_outputs'])
+            result.extend(self._lm_state_names)
         return result
 
     @generate.property('outputs')
     def generate_outputs(self):
         result = self._state_names + ['outputs'] + self._glimpse_names
         if self.language_model:
-            result.extend(self._lm_state_names + ['lm_outputs'])
+            result.extend(self._lm_state_names)
         result.append('costs')
         return result
 
@@ -389,9 +387,8 @@ class BaseSequenceGenerator(Initializable):
             return self.transition.get_dim(name)
         if name == 'outputs':
             return self.readout.get_dim(name)
-        if self.language_model:
-            if name.startswith('lm_') and name in self._lm_state_names + ['lm_outputs']:
-                return self.language_model.get_dim(name[3:])
+        if self.language_model and name in self._lm_state_names:
+            return self.language_model.get_dim(name[3:])
         return super(BaseSequenceGenerator, self).get_dim(name)
 
     @application
