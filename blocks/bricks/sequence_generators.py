@@ -312,12 +312,12 @@ class BaseSequenceGenerator(Initializable):
         states = dict_subset(kwargs, self._state_names)
         contexts = dict_subset(kwargs, self._context_names)
         glimpses = dict_subset(kwargs, self._glimpse_names)
-        lm_states = dict_subset(kwargs, self.language_model.apply.outputs)
+        lm_states = dict_subset(kwargs, self.language_model.apply_step.outputs)
 
         lm_arguments = {}
         if self.language_model:
             lm_arguments = self.language_model.apply_step(
-                outputs, dict_union(lm_states, as_dict=False))
+                outputs, as_dict=True, **dict_union(lm_states))
         next_glimpses = self.transition.take_glimpses(
             as_dict=True,
             **dict_union(lm_arguments, states, glimpses, contexts))
@@ -333,7 +333,8 @@ class BaseSequenceGenerator(Initializable):
             as_list=True,
             **dict_union(next_inputs, states, next_glimpses, contexts))
         return (next_states + [next_outputs] +
-                list(next_glimpses.values()) + [next_costs])
+                list(next_glimpses.values()) + list(lm_arguments.values()) +
+                [next_costs])
 
     @generate.delegate
     def generate_delegate(self):
@@ -341,10 +342,16 @@ class BaseSequenceGenerator(Initializable):
 
     @generate.property('states')
     def generate_states(self):
+        if self.language_model:
+            return (self._state_names + ['outputs'] + self._glimpse_names +
+                    self.language_model.apply_step.outputs)
         return self._state_names + ['outputs'] + self._glimpse_names
 
     @generate.property('outputs')
     def generate_outputs(self):
+        if self.language_model:
+            return (self._state_names + ['outputs'] + self._glimpse_names +
+                    self.language_model.apply_step.outputs + ['costs'])
         return (self._state_names + ['outputs'] +
                 self._glimpse_names + ['costs'])
 
@@ -354,16 +361,20 @@ class BaseSequenceGenerator(Initializable):
             return self.transition.get_dim(name)
         elif name == 'outputs':
             return self.readout.get_dim(name)
+        elif self.language_model and name in self.language_model.apply_step.outputs:
+            return self.language_model.get_dim(name)
         return super(BaseSequenceGenerator, self).get_dim(name)
 
     @application
     def initial_states(self, batch_size, *args, **kwargs):
-        # TODO: support dict of outputs for application methods
-        # to simplify this code.
         state_dict = dict(
             self.transition.initial_states(
                 batch_size, as_dict=True, *args, **kwargs),
             outputs=self.readout.initial_outputs(batch_size))
+        if self.language_model :
+            lm_initial_states = self.language_model.initial_states(
+                batch_size, *args, **kwargs)
+            state_dict = dict_union(state_dict, lm_initial_states)
         return [state_dict[state_name]
                 for state_name in self.generate.states]
 
