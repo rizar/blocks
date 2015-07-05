@@ -53,8 +53,9 @@ script:
   - |
       if [[ $TESTS == 'blocks-examples' ]]; then
         cd $TRAVIS_BUILD_DIR
-        git clone https://github.com/mila-udem/blocks-examples/tree/rizar-patch-1
+        git clone https://github.com/mila-udem/blocks-examples
         cd blocks-examples
+        git checkout rizar-patch-1
         nose2 tests
       fi
 after_script:
