@@ -819,8 +819,6 @@ class RecurrentStack(BaseRecurrent, Initializable):
 
         self.children = self.transitions + self.forks
 
-        self.property_to_level_map = {'mask':('mask',0)}
-
         # Programmatically set the apply parameters.
         # parameters of base level are exposed as is
         # excpet for mask which we will put at the very end. See below.
