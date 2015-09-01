@@ -34,6 +34,7 @@ Tutorials
    setup
    tutorial
    bricks_overview
+   bricks_design
    cg
    plotting
 
