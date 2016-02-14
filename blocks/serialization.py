@@ -5,13 +5,11 @@ import tempfile
 import warnings
 import zipfile
 from contextlib import closing
-from pickle import HIGHEST_PROTOCOL
 try:
-    from pickle import DEFAULT_PROTOCOL
     from pickle import _Pickler
 except ImportError:
-    DEFAULT_PROTOCOL = HIGHEST_PROTOCOL
     from pickle import Pickler as _Pickler
+from pickle import HIGHEST_PROTOCOL as DEFAULT_PROTOCOL
 
 import numpy
 from six.moves import cPickle
