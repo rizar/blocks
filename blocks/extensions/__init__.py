@@ -637,15 +637,16 @@ class Timing(SimpleExtension):
         elif which_callback == 'after_epoch':
             level = 'epoch'
             counter = 'epochs_done'
-        for action in ['train', 'read_data']:
-            self.previous_index[level] = self.current_index[level]
-            self.current_index[level] = self.main_loop.log.status[counter]
-            if self.current_index[level] == self.previous_index[level]:
-                logger.debug('Timing extension was called twice this %s, '
-                             'log was not updated.', level)
-                # Nothing to report for this level
-                continue
 
+        self.previous_index[level] = self.current_index[level]
+        self.current_index[level] = self.main_loop.log.status[counter]
+        if self.current_index[level] == self.previous_index[level]:
+            logger.debug('Timing extension was called twice this %s, '
+                         'log was not updated.', level)
+            # Nothing to report for this level
+            return
+
+        for action in ['train', 'read_data']:
             self.previous[level][action] = self.current[level][action]
             self.current[level][action] = profile['training', 'epoch', action]
 
