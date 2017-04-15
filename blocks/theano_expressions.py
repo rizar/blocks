@@ -2,6 +2,12 @@
 from theano import tensor
 
 
+def smart_sum(x):
+    for i in range(x.ndim):
+        x = x.sum(axis=-1)
+    return x
+
+
 def l2_norm(tensors, squared=False):
     """Computes the total L2 norm of a set of tensors.
 
@@ -16,7 +22,7 @@ def l2_norm(tensors, squared=False):
         If `True`, return the squared L2 norm. Default: `False`.
 
     """
-    summed = [tensor.sqr(tensor.as_tensor_variable(t)).sum() for t in tensors]
+    summed = [smart_sum(tensor.sqr(tensor.as_tensor_variable(t))) for t in tensors]
     joined = tensor.stack(summed, axis=0)
     return joined.sum() if squared else tensor.sqrt(joined.sum())
 
